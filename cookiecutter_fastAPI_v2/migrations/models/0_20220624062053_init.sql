@@ -1,0 +1,39 @@
+-- upgrade --
+CREATE TABLE IF NOT EXISTS "aerich" (
+    "id" SERIAL NOT NULL PRIMARY KEY,
+    "version" VARCHAR(255) NOT NULL,
+    "app" VARCHAR(100) NOT NULL,
+    "content" JSONB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS "role" (
+    "created_at" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+    "id" SERIAL NOT NULL PRIMARY KEY,
+    "name" VARCHAR(32) NOT NULL,
+    "description" TEXT,
+    "is_admin" BOOL NOT NULL  DEFAULT False,
+    "permission" JSONB NOT NULL
+);
+COMMENT ON TABLE "role" IS 'Role ';
+CREATE TABLE IF NOT EXISTS "user" (
+    "created_at" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+    "id" SERIAL NOT NULL PRIMARY KEY,
+    "username" VARCHAR(64) NOT NULL,
+    "password" VARCHAR(128)
+);
+COMMENT ON TABLE "user" IS 'User';
+CREATE TABLE IF NOT EXISTS "token" (
+    "created_at" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+    "id" UUID NOT NULL  PRIMARY KEY,
+    "source" VARCHAR(32) NOT NULL,
+    "expire_at" TIMESTAMPTZ,
+    "is_delete" BOOL NOT NULL  DEFAULT False,
+    "permission" JSONB NOT NULL,
+    "user_id" INT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS "user_role" (
+    "user_id" INT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+    "role_id" INT NOT NULL REFERENCES "role" ("id") ON DELETE CASCADE
+);

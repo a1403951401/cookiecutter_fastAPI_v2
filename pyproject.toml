@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "cookiecutter_fastAPI_v2"
+version = "0.1.0"
+description = ""
+authors = ["Martin"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.78.0"
+uvicorn = { extras = ["standard"], version = "^0.17.6" }
+orjson = "^3.7.2"
+loguru = "^0.6.0"
+httpx = "^0.23.0"
+tortoise-orm = {extras = ["asyncpg"], version = "^0.19.1"}
+aerich = "^0.6.3"
+async-property = "^0.2.1"
+passlib = { extras = ["bcrypt"], version = "^1.7.4" }
+typing-extensions = "^4.2.0"
+arq = "0.23a1"
+
+[tool.poetry.dev-dependencies]
+
+
+[[tool.poetry.source]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.aerich]
+tortoise_orm = "cookiecutter_fastAPI_v2.config.TORTOISE_ORM"
+location = "./cookiecutter_fastAPI_v2/migrations"
+src_folder = "./."
