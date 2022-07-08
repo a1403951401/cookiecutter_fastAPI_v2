@@ -8,13 +8,18 @@ class TestCBV(CBV):
     async def dehydrate(self, obj: User, for_list: bool = False) -> UserResponse:
         return UserResponse(id=obj.id, username=obj.username)
 
-    @api_route(summary="查询用户")
-    async def get(self, obj):
-        return await super(TestCBV, self).get(obj)
 
     @api_route(summary="批量查询用户")
     async def get_list(self, query):
         return await super(TestCBV, self).get_list(query)
+
+    @api_route(summary="查询用户")
+    async def get(self, obj):
+        return await super(TestCBV, self).get(obj)
+
+    @api_route(summary="注册用户")
+    async def post_list(self, data):
+        return await super(TestCBV, self).post_list(data)
 
     class Meta:
         router = auth_v2_router
@@ -26,4 +31,4 @@ class TestCBV(CBV):
         limit = 50
         offset = 0
 
-        allowed_methods = ['get']
+        allowed_methods = ['get', 'post']

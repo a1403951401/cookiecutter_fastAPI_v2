@@ -1,4 +1,5 @@
 from fastapi import Depends
+from pydantic.main import ModelMetaclass
 from starlette.exceptions import HTTPException
 from tortoise import Model
 from tortoise.exceptions import DoesNotExist
@@ -18,6 +19,12 @@ class CBV(metaclass=CBVMetaClass):
         return getattr(self.Meta, key, getattr(CBVMeta, key, default))
 
     @property
+    def model(self):
+        if isinstance(self.Meta.queryset, QuerySet):
+            return self.Meta.queryset.model
+        return self.Meta.queryset
+
+    @property
     def base_obj_response(self):
         return self.get_meta('base_obj_response')
 
@@ -33,16 +40,17 @@ class CBV(metaclass=CBVMetaClass):
     def base_list_response(self):
         return self.get_meta('base_list_response')
 
-    async def post(self):
-        raise NotImplementedError
+    @set_meta(META_AUTO_MODEL, value=True)
+    async def _post_list(self, data: ModelMetaclass):
+        obj = await self.post_list(data)
+        return self.base_obj_response(data=await self.dehydrate(obj, for_list=False))
 
-    async def post_list(self):
-        raise NotImplementedError
+    async def post_list(self, data: ModelMetaclass):
+        return await self.model.create(**data.dict())
 
     @set_meta(META_ANNOTATION, id='base_id_type')
     async def get_obj(self, id) -> Model:
         """ 查询操作对象 """
-        # return await self.Meta.queryset.get(id=id)
         try:
             return await self.Meta.queryset.get(id=id)
         except DoesNotExist:
@@ -94,7 +102,7 @@ class CBV(metaclass=CBVMetaClass):
             model: 数据库 orm 模型
             for_list: 判断是 get / get_list
         """
-        raise NotImplementedError
+        pass
 
     async def _get(self, obj: Model = Depends(get_obj)) -> dict:
         obj = await self.get(obj)

@@ -1,6 +1,7 @@
 import inspect
 
 from fastapi import Depends, APIRouter
+from pydantic.main import ModelMetaclass
 from tortoise.contrib.pydantic import pydantic_model_creator, PydanticModel
 from tortoise.queryset import QuerySet
 
@@ -14,6 +15,7 @@ class CBVMeta:
     allowed_methods: List[str] = ['POST', 'DELETE', 'PUT', 'GET']
     # 模型
     queryset: QuerySet = None
+    # __queryset_automodel__: ModelMetaclass
     # 序列化类型
     base_id_type = int
     base_obj_response = BaseObjectResponse
@@ -31,6 +33,9 @@ def _get_attr(mcs, key):
     meta: CBVMeta = getattr(mcs, 'Meta', None)
     return getattr(meta if hasattr(meta, key) else CBVMeta, key)
 
+def _set_attr(mcs, key, value):
+    meta: CBVMeta = getattr(mcs, 'Meta', None)
+    setattr(meta, key, value)
 
 class CBVMetaClass(type):
     def __new__(mcs, name, bases, attrs):
@@ -38,13 +43,17 @@ class CBVMetaClass(type):
         # 基类不进行序列化
         if not bases:
             return mcs
-        # TODO(Martin): 此处需要通过 queryset 生产 auto model 对象用于 post / put
-        # 构造 auto 模型
+        # 自动构造模型
         queryset = _get_attr(mcs, 'queryset')
-        if queryset:
-            model = pydantic_model_creator(queryset, name=queryset.__name__)
-        signature = inspect.signature(mcs.__init__)
+        # dehydrate 返回值
+        if not hasattr(queryset, QUERYSET_AUTO_MODEL):
+            _set_attr(mcs, QUERYSET_AUTO_MODEL, pydantic_model_creator(queryset))
+        # put、post body
+        if not hasattr(queryset, QUERYSET_AUTO_MODEL_READONLY):
+            _set_attr(mcs, QUERYSET_AUTO_MODEL_READONLY, pydantic_model_creator(queryset, exclude_readonly=True))
+
         # 构造 __init__ 过滤 self *args **kwargs
+        signature = inspect.signature(mcs.__init__)
         parameters = [
             parameter
             for parameter in list(signature.parameters.values())[1:]
@@ -60,6 +69,7 @@ class CBVMetaClass(type):
             for name, hint in get_type_hints(mcs).items()
         ])
         mcs.__signature__ = signature.replace(parameters=parameters)
+
         # 获取 allowed_methods 对应的路由进行注册
         functions = {}
         for method in _get_attr(mcs, 'allowed_methods'):
@@ -68,6 +78,7 @@ class CBVMetaClass(type):
                 if METHOD_FUNCTIONS[coroutine_function_name] == method:
                     functions[coroutine_function_name] = method
 
+        # 返回值序列化
         base_obj_response = _get_attr(mcs, 'base_obj_response')
         base_list_response = _get_attr(mcs, 'base_list_response')
         base_path = _get_attr(mcs, 'resource_name')
@@ -87,6 +98,13 @@ class CBVMetaClass(type):
                             kind=inspect.Parameter.KEYWORD_ONLY,
                             annotation=annotation,
                             default=None))
+            elif getattr(coroutine_function, META_AUTO_MODEL, False):
+                new_parameters.append(
+                    inspect.Parameter(
+                        name='data',
+                        kind=inspect.Parameter.KEYWORD_ONLY,
+                        annotation=_get_attr(mcs, QUERYSET_AUTO_MODEL_READONLY),
+                        default=...))
             else:
                 meta_default = getattr(coroutine_function, META_DEFAULT, {})
                 meta_annotation = getattr(coroutine_function, META_ANNOTATION, {})
@@ -126,7 +144,7 @@ class CBVMetaClass(type):
                         kwargs['response_model'] = function or dehydrate
                 # 返回值模型序列化
                 if kwargs['response_model']:
-                    if 'list' in name:
+                    if name == '_get_list':
                         if base_list_response and not isinstance(kwargs['response_model'], base_list_response):
                             kwargs['response_model'] = base_list_response[kwargs['response_model']]
                     else:
