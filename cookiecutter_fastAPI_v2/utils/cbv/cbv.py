@@ -21,17 +21,24 @@ class CBV(metaclass=CBVMetaClass):
 
     @property
     def queryset(self):
-        """ 同时返回关联的外键内容 """
+        """ 获取 queryset 关联返回外键字段 """
         queryset = self.Meta.queryset
         if not isinstance(queryset, QuerySet):
             queryset = queryset.all()
+        # noinspection PyProtectedMember
         return queryset.prefetch_related(*list(queryset.model._meta.fetch_fields))
 
     @property
     def model(self):
+        """ 获取 queryset model """
         if isinstance(self.queryset, QuerySet):
             return self.queryset.model
         return self.queryset
+
+    async def fetch_related(self, obj):
+        """ 关联查询外键信息 """
+        # noinspection PyProtectedMember
+        await obj.fetch_related(*list(self.model._meta.fetch_fields))
 
     @property
     def base_obj_response(self):
@@ -49,14 +56,6 @@ class CBV(metaclass=CBVMetaClass):
     def base_list_response(self):
         return self.get_meta('base_list_response')
 
-    @set_meta(META_AUTO_MODEL, value=True)
-    async def _post_list(self, data: ModelMetaclass):
-        obj = await self.post_list(data)
-        return self.base_obj_response(data=await self.dehydrate(obj, for_list=False))
-
-    async def post_list(self, data: ModelMetaclass):
-        return await self.model.create(**data.dict())
-
     @set_meta(META_ANNOTATION, id='base_id_type')
     async def get_obj(self, id) -> Model:
         """ 查询操作对象 """
@@ -64,19 +63,6 @@ class CBV(metaclass=CBVMetaClass):
             return await self.queryset.get(id=id)
         except DoesNotExist:
             raise HTTPException(status_code=404)
-
-    async def delete(self, obj: Model = Depends(get_obj)):
-        raise NotImplementedError
-
-    async def delete_list(self):
-
-        raise NotImplementedError
-
-    async def put(self, obj: Model = Depends(get_obj)):
-        raise NotImplementedError
-
-    async def put_list(self):
-        raise NotImplementedError
 
     @set_meta(META_FIELDS, value=True)
     async def apply_filters(self, **kwargs: Dict[str, Any]) -> QuerySet:
@@ -106,25 +92,85 @@ class CBV(metaclass=CBVMetaClass):
             query = query.offset(offset)
         return query, self.base_meta_response(limit=limit, offset=offset, total_count=await query.count())
 
-    async def fetch_related(self, obj: Model):
-        describe = obj.describe()
-        for key in ['fk_fields', 'backward_fk_fields', 'o2o_fields', 'backward_o2o_fields', 'm2m_fields']:
-            await obj.fetch_related(*[field['name'] for field in describe[key]])
-            await obj.fetch_related('created_at', 'updated_at')
-
-    async def dehydrate(self, obj: Model, for_list: bool = False):
-        """ 序列化数据库模型返回值的方法
+    async def dehydrate(self, obj: Model, method: str = 'get', for_list: bool = False):
+        """ 通用序列化数据库模型返回值的方法
 
         Args:
             obj: 数据库 orm 模型
-            for_list: 判断是 get / get_list
+            method: 请求类型
+            for_list: 主键查询 or 批量查询
         """
-        model: Type[PydanticModel] = self.get_meta(QUERYSET_AUTO_MODEL)
-        return model.from_orm(obj)
+        if isinstance(obj, Model):
+            model: Type[PydanticModel] = self.get_meta(QUERYSET_AUTO_MODEL)
+            return model.from_orm(obj)
+        return obj
+
+    async def _post(self, obj: Model = Depends(get_obj)):
+        """ 复制对象 """
+        obj = await self.post(obj)
+        await self.fetch_related(obj)
+        return self.base_obj_response(data=await self.dehydrate(obj, method='POST', for_list=False))
+
+    async def post(self, obj: Model):
+        model: Type[PydanticModel] = self.get_meta(QUERYSET_AUTO_MODEL_READONLY)
+        return await self.model.create(**model.from_orm(obj).dict())
+
+    @set_meta(META_AUTO_MODEL, value=True)
+    async def _post_list(self, data: ModelMetaclass):
+        """ 创建对象 """
+        obj = await self.post_list(data)
+        await self.fetch_related(obj)
+        return self.base_obj_response(data=await self.dehydrate(obj, method='POST', for_list=False))
+
+    async def post_list(self, data: ModelMetaclass):
+        return await self.model.create(**data.dict())
+
+    async def _delete(self, obj: Model = Depends(get_obj)) -> str:
+        """ 删除对象 """
+        await self.delete(obj)
+        return self.base_obj_response()
+
+    async def delete(self, obj: Model):
+        await obj.delete()
+
+    async def _delete_list(self, query: QuerySet = Depends(apply_filters)):
+        """ 批量删除 """
+        await self.delete_list(query)
+        return self.base_obj_response()
+
+    async def delete_list(self, query: QuerySet):
+        """  """
+        await query.delete()
+
+    @set_meta(META_AUTO_MODEL, value=True)
+    async def _put(self, data: ModelMetaclass, obj: Model = Depends(get_obj)):
+        """ 修改对象 """
+        obj = await self.put(data, obj)
+        await self.fetch_related(obj)
+        return self.base_obj_response(data=await self.dehydrate(obj, method='PUT', for_list=False))
+
+    async def put(self, data: ModelMetaclass, obj: Model):
+        await obj.update_from_dict(data.dict())
+        await obj.save()
+        return obj
+
+    @set_meta(META_AUTO_MODEL, value=True)
+    async def _put_list(self, data: ModelMetaclass, query: QuerySet = Depends(apply_filters)):
+        """ 批量更新 """
+        ids = await query.values_list('id', flat=True)
+        await self.put_list(data, query)
+        objects = [
+            await self.dehydrate(obj, method='PUT', for_list=True)
+            async for obj in self.queryset.filter(id__in=ids)]
+        return self.base_obj_response(data=objects)
+
+    async def put_list(self, data: ModelMetaclass, query: QuerySet):
+        await query.update(**data.dict())
 
     async def _get(self, obj: Model = Depends(get_obj)):
+        """ 主键查询 """
         obj = await self.get(obj)
-        return self.base_obj_response(data=await self.dehydrate(obj, for_list=False))
+        return self.base_obj_response(data=await self.dehydrate(obj, method='GET', for_list=False))
 
     async def get(self, obj: Model):
         return obj
@@ -133,12 +179,13 @@ class CBV(metaclass=CBVMetaClass):
     async def _get_list(self,
                         query: QuerySet = Depends(apply_filters),
                         limit: int = None, offset: int = None):
+        """ 批量查询 """
         query = await self.get_list(query)
         query = await self.apply_sorting(query)
         query, meta = await self.apply_limit_and_offset(query, limit, offset)
 
         objects = [
-            await self.dehydrate(obj, for_list=True)
+            await self.dehydrate(obj, method='GET', for_list=True)
             async for obj in query]
 
         return self.base_list_response(

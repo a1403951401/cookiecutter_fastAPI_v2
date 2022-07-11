@@ -1,8 +1,7 @@
 import inspect
 
 from fastapi import Depends, APIRouter
-from pydantic.main import ModelMetaclass
-from tortoise.contrib.pydantic import pydantic_model_creator, PydanticModel
+from tortoise.contrib.pydantic import pydantic_model_creator
 from tortoise.queryset import QuerySet
 
 from .model import BaseObjectResponse, BaseListResponse, MetaResponse, ListResponseData
@@ -39,11 +38,11 @@ def _set_attr(mcs, key, value):
     setattr(meta, key, value)
 
 
-def _pydantic_meta(mcs):
+def _pydantic_meta(mcs, key):
     kwargs = {}
-    meta = getattr(mcs, 'PydanticMeta', None)
+    meta = getattr(mcs, key, None)
     if meta:
-        for k in ['exclude', 'include', 'computed', 'optional']:
+        for k in PYDANTIC_META_KEYS:
             if hasattr(meta, k):
                 kwargs[k] = getattr(meta, k)
     return kwargs
@@ -57,12 +56,21 @@ class CBVMetaClass(type):
             return mcs
         # 自动构造模型
         queryset = _get_attr(mcs, 'queryset')
-
         # dehydrate 返回值
-        _set_attr(mcs, QUERYSET_AUTO_MODEL, pydantic_model_creator(queryset, **_pydantic_meta(mcs)))
+        _set_attr(
+            mcs,
+            QUERYSET_AUTO_MODEL,
+            pydantic_model_creator(
+                queryset,
+                **_pydantic_meta(queryset, QUERYSET_AUTO_MODEL_KEY)))
         # put、post body
-        _set_attr(mcs, QUERYSET_AUTO_MODEL_READONLY,
-                  pydantic_model_creator(queryset, exclude_readonly=True, **_pydantic_meta(mcs)))
+        _set_attr(
+            mcs,
+            QUERYSET_AUTO_MODEL_READONLY,
+            pydantic_model_creator(
+                queryset,
+                exclude_readonly=True,
+                **_pydantic_meta(queryset, QUERYSET_AUTO_MODEL_READONLY_KEY)))
         # 构造 __init__ 过滤 self *args **kwargs
         signature = inspect.signature(mcs.__init__)
         parameters = [
@@ -96,6 +104,15 @@ class CBVMetaClass(type):
         # 添加 routers
         router = _get_attr(mcs, 'router')
         for name, coroutine_function in inspect.getmembers(mcs, inspect.iscoroutinefunction):
+            # 判断是否启用id接口
+            not_implemented = getattr(coroutine_function, META_NOT_IMPLEMENTED, False)
+            if not_implemented:
+                if isinstance(not_implemented, bool):
+                    continue
+                elif isinstance(not_implemented, str):
+                    if getattr(getattr(mcs, not_implemented), META_NOT_IMPLEMENTED, False):
+                        continue
+
             # 所有依赖过滤 self
             signature = inspect.signature(coroutine_function)
             parameters = list(signature.parameters.values())
@@ -109,24 +126,29 @@ class CBVMetaClass(type):
                             kind=inspect.Parameter.KEYWORD_ONLY,
                             annotation=annotation,
                             default=None))
-            # 配置自动模型
-            elif getattr(coroutine_function, META_AUTO_MODEL, False):
-                new_parameters.append(
-                    inspect.Parameter(
-                        name='data',
-                        kind=inspect.Parameter.KEYWORD_ONLY,
-                        annotation=_get_attr(mcs, QUERYSET_AUTO_MODEL_READONLY),
-                        default=...))
             else:
+                # 配置自动模型
+                if getattr(coroutine_function, META_AUTO_MODEL, False):
+                    new_parameters.append(
+                        inspect.Parameter(
+                            name='data',
+                            kind=inspect.Parameter.KEYWORD_ONLY,
+                            annotation=_get_attr(mcs, QUERYSET_AUTO_MODEL_READONLY),
+                            default=...))
                 meta_default = getattr(coroutine_function, META_DEFAULT, {})
                 meta_annotation = getattr(coroutine_function, META_ANNOTATION, {})
                 for parameter in parameters[1:]:
-                    parameter = parameter.replace(kind=inspect.Parameter.KEYWORD_ONLY)
-                    if parameter.name in meta_default:
-                        parameter = parameter.replace(default=_get_attr(mcs, meta_default[parameter.name]))
-                    if parameter.name in meta_annotation:
-                        parameter = parameter.replace(annotation=_get_attr(mcs, meta_annotation[parameter.name]))
-                    new_parameters.append(parameter)
+                    # 已存在的不会重复添加
+                    for new_parameter in new_parameters:
+                        if new_parameter.name == parameter.name:
+                            break
+                    else:
+                        parameter = parameter.replace(kind=inspect.Parameter.KEYWORD_ONLY)
+                        if parameter.name in meta_default:
+                            parameter = parameter.replace(default=_get_attr(mcs, meta_default[parameter.name]))
+                        if parameter.name in meta_annotation:
+                            parameter = parameter.replace(annotation=_get_attr(mcs, meta_annotation[parameter.name]))
+                        new_parameters.append(parameter)
             signature = signature.replace(parameters=new_parameters)
             coroutine_function.__signature__ = signature
             if name in functions:
@@ -156,7 +178,6 @@ class CBVMetaClass(type):
                         kwargs['response_model'] = function or dehydrate
                     else:
                         kwargs['response_model'] = _get_attr(mcs, QUERYSET_AUTO_MODEL)
-
                 # 返回值模型序列化
                 if kwargs['response_model']:
                     if name == '_get_list':
@@ -164,7 +185,10 @@ class CBVMetaClass(type):
                             kwargs['response_model'] = base_list_response[kwargs['response_model']]
                     else:
                         if base_obj_response and not isinstance(kwargs['response_model'], base_obj_response):
-                            kwargs['response_model'] = base_obj_response[kwargs['response_model']]
+                            if name == '_put_list':
+                                kwargs['response_model'] = base_obj_response[List[kwargs['response_model']]]
+                            else:
+                                kwargs['response_model'] = base_obj_response[kwargs['response_model']]
                 router.api_route(**kwargs)(coroutine_function)
 
         # 初始化路由函数

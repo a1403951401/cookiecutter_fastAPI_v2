@@ -3,11 +3,10 @@ from datetime import datetime
 import bcrypt
 from async_property import async_property
 from tortoise import fields
-from tortoise.contrib.pydantic import pydantic_model_creator
 
 from cookiecutter_fastAPI_v2 import const
 from cookiecutter_fastAPI_v2.config import config
-from cookiecutter_fastAPI_v2.core.base.mixin import IDModel, UUIDModel, TimestampMixin
+from cookiecutter_fastAPI_v2.core.base.mixin import IDModel, UUIDModel
 from cookiecutter_fastAPI_v2.core.base.permission import PERMISSION_MAP
 
 
@@ -18,13 +17,12 @@ class Role(IDModel):
     is_admin = fields.BooleanField(default=False, description='是否管理员')
     permission = fields.JSONField(default=list, description='权限')
 
+
 class User(IDModel):
     """User"""
     username: str = fields.CharField(max_length=64, unique=True, description='用户名')
     password: str = fields.CharField(max_length=128, description='密码hash')
     roles: fields.ManyToManyRelation[Role] = fields.ManyToManyField('models.Role', description='权限')
-
-    # OBJ: UserObj = UserObj
 
     @classmethod
     def get_password(cls, password):
@@ -50,7 +48,7 @@ class User(IDModel):
             permission |= set(role.permission)
         return permission
 
-    class PydanticMeta:
+    class AutoModeMeta:
         exclude = ["password"]
 
 
