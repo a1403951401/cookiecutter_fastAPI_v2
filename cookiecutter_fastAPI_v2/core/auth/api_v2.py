@@ -1,17 +1,21 @@
 from typing import Type
 
+from fastapi import Depends
 from pydantic.main import ModelMetaclass
 from tortoise import Model
 from tortoise.contrib.pydantic import PydanticModel
 from tortoise.queryset import Q, QuerySet
 
 from cookiecutter_fastAPI_v2.core.auth.models import User
+from cookiecutter_fastAPI_v2.core.base.depends import auth_user
 from cookiecutter_fastAPI_v2.core.base.router import auth_v2_router
 from cookiecutter_fastAPI_v2.utils.cbv import CBV
 from cookiecutter_fastAPI_v2.utils.cbv.const import QUERYSET_AUTO_MODEL_READONLY
+from cookiecutter_fastAPI_v2.utils.context import Auth
 
 
 class TestCBV(CBV):
+    auth: Auth = Depends(auth_user(True))
 
     async def post(self, obj: Model):
         model: Type[PydanticModel] = self.get_meta(QUERYSET_AUTO_MODEL_READONLY)

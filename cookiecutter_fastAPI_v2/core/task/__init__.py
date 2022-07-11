@@ -2,6 +2,7 @@ from datetime import datetime
 
 from arq.jobs import Job, JobStatus
 
+from cookiecutter_fastAPI_v2.core.base.app import BaseResponse
 from cookiecutter_fastAPI_v2.core.base.router import task_router
 from cookiecutter_fastAPI_v2.utils import BaseModel
 from cookiecutter_fastAPI_v2.utils.context import context
@@ -21,7 +22,7 @@ class TaskResponse(BaseModel):
     result: dict = None
 
     @classmethod
-    async def init(cls, task_id: str) -> 'TaskResponse':
+    async def init(cls, task_id: str) -> 'BaseResponse[TaskResponse]':
         job = Job(job_id=task_id, redis=context.pool)
         info = await job.result_info()
         response = TaskResponse(task_id=task_id, status=await job.status())
@@ -34,13 +35,13 @@ class TaskResponse(BaseModel):
             if not isinstance(info.result, dict):
                 info.result = {'result': info.result}
             response.result = info.result
-        return response
+        return BaseResponse(data=response)
 
 
 @task_router.post("/",
                   summary="创建任务",
-                  response_model=TaskResponse)
-async def task(task: Task) -> TaskResponse:
+                  response_model=BaseResponse[TaskResponse])
+async def task(task: Task) -> BaseResponse[TaskResponse]:
     """ http://127.0.0.1:8000/task?message=123 """
     job: Job = await context.pool.enqueue_job(task.task, **task.data)
     return await TaskResponse.init(job.job_id)
@@ -48,6 +49,6 @@ async def task(task: Task) -> TaskResponse:
 
 @task_router.get("/{task_id}",
                  summary="查询任务",
-                 response_model=TaskResponse)
-async def get_task(task_id: str) -> TaskResponse:
+                 response_model=BaseResponse[TaskResponse])
+async def get_task(task_id: str) -> BaseResponse[TaskResponse]:
     return await TaskResponse.init(task_id)

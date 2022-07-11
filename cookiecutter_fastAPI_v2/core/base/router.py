@@ -25,7 +25,6 @@ auth_v1_router = APIRouter(
     tags=["auth"]
 )
 
-
 auth_v2_router = APIRouter(
     prefix="/auth/v2",
     tags=["auth"]

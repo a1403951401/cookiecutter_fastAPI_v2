@@ -3,14 +3,13 @@ import datetime
 from cookiecutter_fastAPI_v2 import const
 from cookiecutter_fastAPI_v2.core.auth.api_models import UserResponse, UserRequest, get_user_response
 from cookiecutter_fastAPI_v2.core.auth.models import User, Role, Token
-from cookiecutter_fastAPI_v2.core.base.app import ORJSONResponse
-from cookiecutter_fastAPI_v2.core.base.exceptions import BadResponse, AccessTokenExpire
+from cookiecutter_fastAPI_v2.core.base.exceptions import *
 from cookiecutter_fastAPI_v2.core.base.router import auth_v1_router
 
 
 @auth_v1_router.post("/register",
                      summary="用户注册",
-                     response_model=UserResponse)
+                     response_model=BaseResponse[UserResponse])
 async def register(data: UserRequest) -> ORJSONResponse:
     if await User.filter(username=data.username).exists():
         raise BadResponse(message='user %s is exists' % data.username)
@@ -25,7 +24,7 @@ async def register(data: UserRequest) -> ORJSONResponse:
 
 @auth_v1_router.post("/login",
                      summary="用户登录",
-                     response_model=UserResponse)
+                     response_model=BaseResponse[UserResponse])
 async def login(data: UserRequest) -> ORJSONResponse:
     user = await User.filter(username=data.username).first()
     if not user or not user.check_password(data.password):
