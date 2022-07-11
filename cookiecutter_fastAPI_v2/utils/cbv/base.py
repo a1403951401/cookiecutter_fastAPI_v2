@@ -33,9 +33,21 @@ def _get_attr(mcs, key):
     meta: CBVMeta = getattr(mcs, 'Meta', None)
     return getattr(meta if hasattr(meta, key) else CBVMeta, key)
 
+
 def _set_attr(mcs, key, value):
     meta: CBVMeta = getattr(mcs, 'Meta', None)
     setattr(meta, key, value)
+
+
+def _pydantic_meta(mcs):
+    kwargs = {}
+    meta = getattr(mcs, 'PydanticMeta', None)
+    if meta:
+        for k in ['exclude', 'include', 'computed', 'optional']:
+            if hasattr(meta, k):
+                kwargs[k] = getattr(meta, k)
+    return kwargs
+
 
 class CBVMetaClass(type):
     def __new__(mcs, name, bases, attrs):
@@ -45,13 +57,12 @@ class CBVMetaClass(type):
             return mcs
         # 自动构造模型
         queryset = _get_attr(mcs, 'queryset')
-        # dehydrate 返回值
-        if not hasattr(queryset, QUERYSET_AUTO_MODEL):
-            _set_attr(mcs, QUERYSET_AUTO_MODEL, pydantic_model_creator(queryset))
-        # put、post body
-        if not hasattr(queryset, QUERYSET_AUTO_MODEL_READONLY):
-            _set_attr(mcs, QUERYSET_AUTO_MODEL_READONLY, pydantic_model_creator(queryset, exclude_readonly=True))
 
+        # dehydrate 返回值
+        _set_attr(mcs, QUERYSET_AUTO_MODEL, pydantic_model_creator(queryset, **_pydantic_meta(mcs)))
+        # put、post body
+        _set_attr(mcs, QUERYSET_AUTO_MODEL_READONLY,
+                  pydantic_model_creator(queryset, exclude_readonly=True, **_pydantic_meta(mcs)))
         # 构造 __init__ 过滤 self *args **kwargs
         signature = inspect.signature(mcs.__init__)
         parameters = [
@@ -98,6 +109,7 @@ class CBVMetaClass(type):
                             kind=inspect.Parameter.KEYWORD_ONLY,
                             annotation=annotation,
                             default=None))
+            # 配置自动模型
             elif getattr(coroutine_function, META_AUTO_MODEL, False):
                 new_parameters.append(
                     inspect.Parameter(
@@ -142,6 +154,9 @@ class CBVMetaClass(type):
                     dehydrate = getattr(getattr(mcs, 'dehydrate', None), '__annotations__', {}).get('return')
                     if function or dehydrate:
                         kwargs['response_model'] = function or dehydrate
+                    else:
+                        kwargs['response_model'] = _get_attr(mcs, QUERYSET_AUTO_MODEL)
+
                 # 返回值模型序列化
                 if kwargs['response_model']:
                     if name == '_get_list':

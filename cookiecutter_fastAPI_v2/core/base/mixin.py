@@ -75,22 +75,22 @@ class PydanticMixin:
         return await cls.create(**obj_data)
 
 
-class TimestampMixin:
-    created_at: datetime = fields.DatetimeField(auto_now_add=True, description='创建时间')
-    updated_at: datetime = fields.DatetimeField(auto_now=True, description='更新时间')
+class TimestampMixin(Model):
+    created_at = fields.DatetimeField(auto_now_add=True, description='创建时间')
+    updated_at = fields.DatetimeField(auto_now=True, description='更新时间')
 
     class Meta:
         abstract = True
 
 
-class IDModel(Model, TimestampMixin):
+class IDModel(TimestampMixin, Model):
     id = fields.IntField(pk=True, description='id')
 
     class Meta:
         abstract = True
 
 
-class UUIDModel(Model, TimestampMixin):
+class UUIDModel(TimestampMixin, Model):
     id = fields.UUIDField(pk=True, description='uuid')
 
     class Meta:

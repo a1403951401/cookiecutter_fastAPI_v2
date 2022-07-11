@@ -15,8 +15,7 @@ async def register(data: UserRequest) -> ORJSONResponse:
     if await User.filter(username=data.username).exists():
         raise BadResponse(message='user %s is exists' % data.username)
 
-    user = await User.create(username=data.username)
-    await user.set_password(data.password)
+    user = await User.create(username=data.username, password=User.get_password(data.password))
 
     if not await Role.exists():
         role = await Role.create(name='admin', is_admin=True)

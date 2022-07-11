@@ -7,7 +7,7 @@ from tortoise.contrib.pydantic import pydantic_model_creator
 
 from cookiecutter_fastAPI_v2 import const
 from cookiecutter_fastAPI_v2.config import config
-from cookiecutter_fastAPI_v2.core.base.mixin import IDModel, UUIDModel
+from cookiecutter_fastAPI_v2.core.base.mixin import IDModel, UUIDModel, TimestampMixin
 from cookiecutter_fastAPI_v2.core.base.permission import PERMISSION_MAP
 
 
@@ -26,8 +26,12 @@ class User(IDModel):
 
     # OBJ: UserObj = UserObj
 
+    @classmethod
+    def get_password(cls, password):
+        return bcrypt.hashpw(password.encode('utf-8'), config.DB_SALT).decode('utf-8')
+
     async def set_password(self, password: str):
-        self.password = bcrypt.hashpw(password.encode('utf-8'), config.DB_SALT).decode('utf-8')
+        self.password = self.get_password(password)
         await self.save(update_fields=['password'])
 
     def check_password(self, password: str) -> bool:
@@ -47,7 +51,7 @@ class User(IDModel):
         return permission
 
     class PydanticMeta:
-        exclude = ["password_hash"]
+        exclude = ["password"]
 
 
 class Token(UUIDModel):
