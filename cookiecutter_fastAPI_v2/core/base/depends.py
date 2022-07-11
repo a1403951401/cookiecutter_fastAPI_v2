@@ -11,7 +11,6 @@ def auth_user(auth: bool | str | list = True, need_user=True) -> typing.Callable
     """ 校验用户路由权限 """
 
     async def check_permission(token: str = Cookie(None, title="用户 token")) -> 'Auth':
-
         token = await Token.filter(id=token).first()
         user = await token.user if token else None
         context.auth = Auth(
