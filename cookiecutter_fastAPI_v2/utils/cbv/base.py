@@ -1,8 +1,9 @@
 import inspect
 
 from fastapi import Depends, APIRouter
+from tortoise import Model
 from tortoise.contrib.pydantic import pydantic_model_creator
-from tortoise.queryset import QuerySet
+from tortoise.queryset import Q
 
 from .model import BaseObjectResponse, BaseListResponse, MetaResponse, ListResponseData
 from .wrapper import *
@@ -13,7 +14,8 @@ class CBVMeta:
     resource_name: str = '/'
     allowed_methods: List[str] = ['POST', 'DELETE', 'PUT', 'GET']
     # 模型
-    queryset: QuerySet = None
+    model: Model = None
+    queryset: Q = None
     # __queryset_automodel__: ModelMetaclass
     # 序列化类型
     base_id_type = int
@@ -55,22 +57,22 @@ class CBVMetaClass(type):
         if not bases:
             return mcs
         # 自动构造模型
-        queryset = _get_attr(mcs, 'queryset')
+        model = _get_attr(mcs, 'model')
         # dehydrate 返回值
         _set_attr(
             mcs,
             QUERYSET_AUTO_MODEL,
             pydantic_model_creator(
-                queryset,
-                **_pydantic_meta(queryset, QUERYSET_AUTO_MODEL_KEY)))
+                model,
+                **_pydantic_meta(model, QUERYSET_AUTO_MODEL_KEY)))
         # put、post body
         _set_attr(
             mcs,
             QUERYSET_AUTO_MODEL_READONLY,
             pydantic_model_creator(
-                queryset,
+                model,
                 exclude_readonly=True,
-                **_pydantic_meta(queryset, QUERYSET_AUTO_MODEL_READONLY_KEY)))
+                **_pydantic_meta(model, QUERYSET_AUTO_MODEL_READONLY_KEY)))
         # 构造 __init__ 过滤 self *args **kwargs
         signature = inspect.signature(mcs.__init__)
         parameters = [

@@ -3,7 +3,7 @@ from typing import Type
 from pydantic.main import ModelMetaclass
 from tortoise import Model
 from tortoise.contrib.pydantic import PydanticModel
-from tortoise.queryset import QuerySet
+from tortoise.queryset import Q, QuerySet
 
 from cookiecutter_fastAPI_v2.core.auth.models import User
 from cookiecutter_fastAPI_v2.core.base.router import auth_v2_router
@@ -30,11 +30,13 @@ class TestCBV(CBV):
     class Meta:
         router = auth_v2_router
         resource_name = '/'
-        queryset = User
+        model = User
+        queryset = Q(roles__id__isnull=True)
         fields = {
             'username': str
         }
         limit = 50
         offset = 0
+        order_by = ['-id']
 
         allowed_methods = ['get', 'post', 'delete', 'put']

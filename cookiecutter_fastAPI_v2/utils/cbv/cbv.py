@@ -20,20 +20,19 @@ class CBV(metaclass=CBVMetaClass):
         return getattr(self.Meta, key, getattr(CBVMeta, key, default))
 
     @property
-    def queryset(self):
-        """ 获取 queryset 关联返回外键字段 """
-        queryset = self.Meta.queryset
-        if not isinstance(queryset, QuerySet):
-            queryset = queryset.all()
-        # noinspection PyProtectedMember
-        return queryset.prefetch_related(*list(queryset.model._meta.fetch_fields))
-
-    @property
     def model(self):
         """ 获取 queryset model """
-        if isinstance(self.queryset, QuerySet):
-            return self.queryset.model
-        return self.queryset
+        return self.Meta.model
+
+    @property
+    def queryset(self):
+        """ 获取 queryset 关联返回外键字段 """
+        if self.Meta.queryset:
+            queryset = self.model.filter(self.Meta.queryset)
+        else:
+            queryset = self.model.all()
+        # noinspection PyProtectedMember
+        return queryset.prefetch_related(*list(self.model._meta.fetch_fields))
 
     async def fetch_related(self, obj):
         """ 关联查询外键信息 """
@@ -139,8 +138,8 @@ class CBV(metaclass=CBVMetaClass):
         return self.base_obj_response()
 
     async def delete_list(self, query: QuerySet):
-        """  """
-        await query.delete()
+        async for obj in query:
+            await obj.delete()
 
     @set_meta(META_AUTO_MODEL, value=True)
     async def _put(self, data: ModelMetaclass, obj: Model = Depends(get_obj)):
@@ -165,7 +164,9 @@ class CBV(metaclass=CBVMetaClass):
         return self.base_obj_response(data=objects)
 
     async def put_list(self, data: ModelMetaclass, query: QuerySet):
-        await query.update(**data.dict())
+        async for obj in query:
+            await obj.update_from_dict(data.dict())
+            await obj.save()
 
     async def _get(self, obj: Model = Depends(get_obj)):
         """ 主键查询 """
