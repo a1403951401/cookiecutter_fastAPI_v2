@@ -1,3 +1,4 @@
+import typing
 from http import HTTPStatus
 
 from fastapi import Request, Response, HTTPException as FHTTPException
@@ -15,6 +16,7 @@ class BaseError(Exception):
     HTTPStatus = HTTPStatus.INTERNAL_SERVER_ERROR
     code: int = 500
     message: str = '方法内部错误'
+    data: typing.Any = None
 
     model: BaseResponse
 
@@ -28,7 +30,8 @@ class BaseError(Exception):
         http_status = HTTPStatus(getattr(e, 'HTTPStatus', HTTPStatus.INTERNAL_SERVER_ERROR))
         return ORJSONResponse(BaseResponse(
             code=e.code,
-            message=http_status.phrase + " | " + e.message
+            message=http_status.phrase + " | " + e.message,
+            data=e.data,
         ), status_code=http_status.value)
 
 
@@ -51,6 +54,7 @@ class ForbiddenError(BaseError):
     HTTPStatus = HTTPStatus.FORBIDDEN
     code = 403
     message = '用户权限不足，或尝试重新登录'
+
 
 @init_error_response
 class NotFindError(BaseError):
@@ -122,7 +126,9 @@ async def exception_handler(request: Request, e: Exception) -> Response:
             "body={body}",
             **{k: dumps(v, default=str) if isinstance(v, dict) else v for k, v in data.items()}
         )
-    if config.DEBUG and not isinstance(e, PASS_EXCEPTION):
+    if getattr(e, 'data', None):
+        response.data = e.data
+    elif config.DEBUG and not isinstance(e, PASS_EXCEPTION):
         response.data = {k: v for k, v in data.items() if k not in ['code', 'message', 'path']}
 
     response: Response = Response(
@@ -130,7 +136,7 @@ async def exception_handler(request: Request, e: Exception) -> Response:
         status_code=http_status.value,
         media_type="application/json"
     )
-
+    # 认证失败清除 cookie
     if isinstance(e, AccessTokenExpire):
         response.delete_cookie("token")
         response.delete_cookie("username")

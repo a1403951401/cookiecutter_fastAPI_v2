@@ -1,10 +1,12 @@
-import inspect
 import typing
 
 from fastapi import FastAPI
 from fastapi.datastructures import Default
 from fastapi.responses import Response, ORJSONResponse
+from pydantic import create_model
+from pydantic.generics import GenericModel
 from tortoise import Tortoise
+from tortoise.queryset import QuerySet
 
 from cookiecutter_fastAPI_v2.config import config
 from cookiecutter_fastAPI_v2.utils import dumps, BaseModel
@@ -18,49 +20,53 @@ class ORJSONResponse(Response):
         return dumps(content, decode=False)
 
 
-class BaseResponse(BaseModel):
+DataT = typing.TypeVar('DataT')
+
+
+class BaseResponse(GenericModel, typing.Generic[DataT]):
     code: int = 200
     message: str = 'ok'
-    data: typing.Any = None
-
-    def __init__(self, **kwargs):
-        super(BaseResponse, self).__init__(**kwargs)
+    data: typing.Optional[DataT] = None
 
     @property
     def response(self) -> ORJSONResponse:
         return ORJSONResponse(self)
 
 
-BASE_ATTR_NAME = [attr_name for attr_name, _ in inspect.getmembers(BaseModel)]
+class MetaResponse(BaseModel):
+    limit: int
+    offset: int
+    total_count: int
 
-
-def format_response(cls: typing.Type[BaseModel]) -> typing.Type[typing.Type[BaseResponse]]:
-    response_name = cls.__name__
-    cls.__name__ += "Data"
-
-    class T(BaseResponse):
-        data: cls = None
-
-    def __init__(self, **kwargs):
-        super(T, self).__init__(**{
-            'code': context.code,
-            'message': context.message,
-            'data': kwargs,
+    def __init__(self):
+        super(MetaResponse, self).__init__(**{
+            'limit': context.limit,
+            'offset': context.offset,
+            'total_count': context.total_count,
         })
 
-    t = type(response_name, (T,), {'__init__': __init__})
-    return t
+
+class ListResponseData(GenericModel, typing.Generic[DataT]):
+    meta: MetaResponse
+    objects: typing.List[DataT]
+
+
+class ListResponse(BaseResponse, typing.Generic[DataT]):
+    data: ListResponseData[DataT]
 
 
 def init_error_response(cls: typing.Type[Exception]) -> typing.Type[Exception]:
-    class T(BaseResponse):
-        code: int = getattr(cls, 'code', 500)
-        message: str = getattr(cls, 'message', '方法内部错误')
-
-    cls.model = type(cls.__name__ + "Model", (T,), {})
+    cls.model = create_model(
+        cls.__name__ + "Model",
+        code=getattr(cls, 'code', 500),
+        message=getattr(cls, 'message', '方法内部错误'),
+        __base__=BaseResponse,
+    )
     app.router.responses[getattr(cls, 'code', 500)] = {'model': cls.model}
     return cls
 
+async def get_list_response(query: QuerySet, dehydrate: typing.Coroutine):
+    pass
 
 app = FastAPI(
     docs_url="/docs" if config.DEBUG else None,

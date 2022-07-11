@@ -50,7 +50,7 @@ for name, middleware in middlewares[::-1]:
 @app.on_event("startup")
 async def startup():
     """ https://tortoise.github.io/query.html """
-    orm = await Tortoise.init(
+    await Tortoise.init(
         db_url=config.DB_DSN,
         modules={
             'models': config.DB_MODELS

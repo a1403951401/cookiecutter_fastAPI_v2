@@ -3,14 +3,19 @@ from contextvars import ContextVar
 from arq import ArqRedis
 from redis.asyncio.client import Redis
 
-from cookiecutter_fastAPI_v2.core.auth.models import User
+from cookiecutter_fastAPI_v2.core.auth.models import User, Token
 from cookiecutter_fastAPI_v2.utils import BaseModel
 
 
 class Auth(BaseModel):
     is_auth: bool = False
-    user: User.models() | None = None
+    is_admin: bool = False
+    user: User = None
     permission: set = set()
+    token: Token = None
+
+    class Config(BaseModel.Config):
+        arbitrary_types_allowed = True
 
 
 class Context:
@@ -18,6 +23,7 @@ class Context:
     pool: ArqRedis = None
     redis: Redis = None
 
+    # Response
     _code = ContextVar('code', default=200)
     _message = ContextVar('message', default='ok')
 

@@ -13,7 +13,8 @@ class PermissionObj(dict):
                  key,
                  title=None,
                  children: typing.List['PermissionObj'] = None,
-                 allow_view_name=False):
+                 allow_view_name=False,
+                 is_default=False):
         """ 用户权限权限
 
         Args:
@@ -21,12 +22,14 @@ class PermissionObj(dict):
           title: 前端展示名称
           children: 下级权限
           allow_view_name: 当为 True 时, viwe 视图 allowed_view_names 会包含该key
+          is_default: 默认权限
         """
         if key in PERMISSION_MAP:
             raise ValueError('key %s already existed.', key)
         self.parent = []
         super(PermissionObj, self).__init__({
             'key': key,
+            'is_default': is_default,
         })
         if title:
             self['title'] = title
@@ -47,9 +50,14 @@ class PermissionObj(dict):
             self['children'] = children
 
 
-PERMISSION = PermissionObj('user', '用户管理', [
-    PermissionObj(const.USER_GET_CODE, '查询用户'),
-    PermissionObj(const.USER_CREATE_CODE, '创建用户'),
-    PermissionObj(const.USER_UPDATE_CODE, '修改用户'),
-    PermissionObj(const.USER_UPDATE_ADMIN_CODE, '修改用户密码'),
+USER_PERMISSION = PermissionObj('user', '用户管理', [
+    PermissionObj(const.PERMISSION_USER_CREATE_CODE, '创建用户'),
+    PermissionObj(const.PERMISSION_USER_DELETE_CODE, '删除用户'),
+    PermissionObj(const.PERMISSION_USER_UPDATE_CODE, '修改用户'),
+    PermissionObj(const.PERMISSION_USER_GET_CODE, '查询用户'),
 ], allow_view_name=True)
+
+# 用户可编辑权限权限
+PERMISSION = [
+    USER_PERMISSION,
+]
